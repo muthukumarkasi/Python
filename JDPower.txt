@@ -1,0 +1,191 @@
+SET ThousandSep=',';
+SET DecimalSep='.';
+SET MoneyThousandSep=',';
+SET MoneyDecimalSep='.';
+SET MoneyFormat='$#,##0.00;-$#,##0.00';
+SET TimeFormat='h:mm:ss TT';
+SET DateFormat='M/D/YYYY';
+SET TimestampFormat='M/D/YYYY h:mm:ss[.fff] TT';
+SET FirstWeekDay=6;
+SET BrokenWeeks=1;
+SET ReferenceDay=0;
+SET FirstMonthOfYear=1;
+SET CollationLocale='en-US';
+SET MonthNames='Jan;Feb;Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec';
+SET LongMonthNames='January;February;March;April;May;June;July;August;September;October;November;December';
+SET DayNames='Mon;Tue;Wed;Thu;Fri;Sat;Sun';
+SET LongDayNames='Monday;Tuesday;Wednesday;Thursday;Friday;Saturday;Sunday';
+
+DealerMaster:
+LOAD id, 
+     dealerCode as DealerCode, 
+     marketName, 
+     RegionName, 
+     oemId, 
+     dealerName, 
+     dealerAddress, 
+     dealerCity, 
+     dealerState, 
+     dealerZip, 
+     dealerRadius, 
+     latitude, 
+     longitude, 
+     testDealer, 
+     datetime
+FROM
+[C:\Users\muthu\Documents\Qlik\JDPowerData\DealerMaster.xlsx]
+(ooxml, embedded labels, table is [Dealer Master]);
+
+ga_event_data:
+LOAD date as EventDate, 
+     dealer_id as DealerCode, 
+     provider_id as EventProviderID, 
+     event_category, 
+     event_action, 
+     event_label, 
+     drs_event, 
+     forms_type_details, 
+     forms_type, 
+     vehicle_type, 
+     make, 
+     model, 
+     model_year, 
+     vin, 
+     pageviews_count as EventPageViewCount, 
+     total_events as EventTotalEvents, 
+     unique_events as EventUniqueEvents, 
+     session_count as EventSessionCount, 
+     main, 
+    // oem_id, 
+     session_duration as EventSessionDuration
+FROM
+[C:\Users\muthu\Documents\Qlik\JDPowerData\ga_event_data.csv]
+(txt, utf8, embedded labels, delimiter is '|', msq);
+
+ga_page_data:
+LOAD date as PageDate, 
+     dealer_id as DealerCode, 
+     provider_id as PageProviderID, 
+     channel_grouping, 
+     device_category, 
+     users, 
+     new_users, 
+     session_count as PageSessionCount, 
+     pageviews_count as PagePageViewCount, 
+     session_duration as PageSessionDuration, 
+     bounces
+    // oem_id
+FROM
+[C:\Users\muthu\Documents\Qlik\JDPowerData\ga_page_data.csv]
+(txt, utf8, embedded labels, delimiter is '|', msq);
+
+ga_site_data:
+LOAD date as SiteDate, 
+     dealer_id as DealerCode, 
+     provider_id as SiteProvider, 
+     content_group, 
+     Siteview_count, 
+     total_events as SiteTotalEvents, 
+     unique_events as SiteUniqueEvents, 
+     session_count as SiteSessionCount 
+     //oem_id
+FROM
+[C:\Users\muthu\Documents\Qlik\JDPowerData\ga_site_data.csv]
+(txt, utf8, embedded labels, delimiter is '|', msq);
+
+GA_USER_Data_New:
+LOAD date as UserDate, 
+    // oem_id, 
+     dealer_id as DealerCode, 
+     provider_id as UserProvider, 
+     ClientID, 
+     fullVisitorId
+FROM
+[C:\Users\muthu\Documents\Qlik\JDPowerData\GA_USER_Data_New.csv]
+(txt, utf8, embedded labels, delimiter is '|', msq);
+
+EnrollmentData:
+LOAD District, 
+     Region, 
+     [Dealer ID] as DealerCode, 
+     [Dealer Name], 
+     [Dealer Status], 
+     [Offer Type], 
+     [Offer Provider], 
+     [Package Name], 
+     [Package Status], 
+     [Enrollment Date], 
+     [Go-Live Date], 
+     [Start Bill Date], 
+     [End Bill Date], 
+     [Include Flag]
+FROM
+[C:\Users\muthu\Documents\Qlik\JDPowerData\DealerMaster.xlsx]
+(ooxml, embedded labels, table is [Enrollment Data]);
+
+temp:
+Load 
+Min(EventDate) as MinDate,
+Max(EventDate) as MaxDate
+Resident ga_event_data;
+
+ 
+
+Let vMinDate = Num(Peek('MinDate',0,ga_event_data));
+Let vMaxDate = Num(Peek('MaxDate',0,ga_event_data));
+
+ 
+
+BuildRange:
+Load
+Date($(vMinDate) + RowNo() -1) As DateRange
+AutoGenerate
+$(vMaxDate)-$(vMinDate);
+
+ 
+
+
+calenderdim:
+Load
+Date(Date#(DateRange),'YYYYMMDD') as EventDate,
+DateRange AS MinDate,
+Day(DateRange) AS DayNum,
+Week(DateRange) AS WeekNum,
+Year(DateRange) AS YearNum,
+WeekDay(DateRange) AS DayName,
+Month(DateRange) AS MonthName,
+Week(DateRange) & '-' & Year(DateRange) AS WeekYear,
+Date(MonthStart(DateRange), 'MM-YYYY') AS MonthYear,
+'Q' & Ceil(Month(DateRange) / 3) AS CalQuarter,
+Quarterstart(DateRange, 0, 1) AS QuarterStart,
+Quarterend(DateRange, 0 , 1) AS QuarterEnd,
+Weekstart(DateRange) AS WeekStart,
+Weekend(DateRange) AS WeekEnd,
+Date(MonthStart(DateRange)) AS MonthStart,
+Date(MonthEnd(DateRange)) AS MonthEnd,
+Date(MonthStart(DateRange)) AS DayOfMonth,
+DayNumberOfQuarter(DateRange) AS DayOfQuarter,
+DayNumberOfYear(DateRange) AS DayOfYear,
+If(Match(WeekDay(DateRange), 'Sun', 'Sat') = 0, 'N', 'Y') AS WeekendFlag
+Resident BuildRange;
+
+ 
+
+Drop table temp,BuildRange;
+
+ 
+
+
+
+
+
+STORE DealerMaster into QVD/DealerMaster.qvd(qvd);
+STORE EnrollmentData into QVD/EnrollmentData.qvd(qvd);
+STORE GA_USER_Data_New into QVD/GA_USER_Data_New.qvd(qvd);
+STORE ga_site_data into QVD/ga_site_data.qvd(qvd);
+STORE ga_page_data into QVD/ga_page_data.qvd(qvd);
+STORE ga_event_data into QVD/ga_event_data.qvd(qvd);
+
+
+Exit Script;
+
